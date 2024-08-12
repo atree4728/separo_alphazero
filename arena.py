@@ -7,7 +7,7 @@ from ray.experimental import tqdm_ray
 remote_tqdm = ray.remote(tqdm_ray.tqdm)
 
 
-# @ray.remote
+@ray.remote
 def play(
     # bar: tqdm_ray.tqdm,
     width: int,

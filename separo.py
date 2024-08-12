@@ -189,14 +189,14 @@ class Grid:
 class Board:
     width: int
     grids: list[Grid]
-    red: Graph
-    blue: Graph
+    red_history: list[Move] = field(default_factory=list)
+    blue_history: list[Move] = field(default_factory=list)
 
     def __init__(self, width: int):
         self.width = width
         self.grids = [Grid() for _ in range(width * width)]
-        self.red = Graph(width)
-        self.blue = Graph(width)
+        self.red_history = []
+        self.blue_history = []
 
         lower = 0
         upper = width - 1
@@ -265,9 +265,9 @@ class Board:
 
         match turn:
             case Color.Red:
-                self.red.apply_move(next_move)
+                self.red_history.append(next_move)
             case Color.Blue:
-                self.blue.apply_move(next_move)
+                self.blue_history.append(next_move)
 
     def to_chars(self) -> list[list[str]]:
         s = [
@@ -316,11 +316,11 @@ class Board:
             print(str(i // 2) if i % 2 == 0 else " ", "".join(row))
 
     def score(self, color: Color) -> int:
-        match color:
-            case Color.Red:
-                return self.red.score()
-            case Color.Blue:
-                return self.blue.score()
+        history = self.red_history if color == Color.Red else self.blue_history
+        graph = Graph(self.width)
+        for move in history:
+            graph.apply_move(move)
+        return graph.score()
 
     def playout(self, init_turn: Color, rng: np.random.Generator) -> Optional[Color]:
         next_turn = opponent_of(init_turn)

@@ -177,17 +177,17 @@ class PUCTMCPlayer:
                 if not node.board.is_gameover():
                     node.expand_node()
 
-        print(
-            list(
-                map(
-                    lambda node: (
-                        node.samples,
-                        node.ucb1(self.ucb1_coeff, np.log(self.root.samples)),
-                    ),
-                    self.root.children,
-                )
-            )
-        )
+        # print(
+        #     list(
+        #         map(
+        #             lambda node: (
+        #                 node.samples,
+        #                 node.ucb1(self.ucb1_coeff, np.log(self.root.samples)),
+        #             ),
+        #             self.root.children,
+        #         )
+        #     )
+        # )
 
         self.root = max(self.root.children, key=lambda node: node.samples)
         # print(
