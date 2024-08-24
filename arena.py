@@ -37,7 +37,7 @@ def play(
         separo.Color.Red
         if red_score > blue_score
         else separo.Color.Blue
-        if blue_score > red_score
+        if red_score < blue_score
         else None
     )
     if verbose:

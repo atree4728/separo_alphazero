@@ -1,8 +1,9 @@
 from dataclasses import dataclass, field
 import numpy as np
 from enum import Enum
-from typing import Optional, NewType, NamedTuple
+from typing import Optional, NewType, NamedTuple, Self
 from collections import deque
+import torch
 
 
 @dataclass
@@ -10,8 +11,49 @@ class Coord:
     x: int
     y: int
 
+    def __sub__(self, arg: Self) -> Self:
+        return Self(self.x - arg.x, self.y - arg.y)
+
 
 Move = NewType("Move", tuple[Coord, Coord, Coord])
+
+
+def into_id(move: Move, width: int) -> int:
+    stone0 = move[0]
+    d1 = move[1] - move[0]
+    d2 = move[2] - move[1]
+    id1 = Dir(d1.x, d1.y).idx()
+    id2 = Dir(d2.x, d2.y).idx()
+    assert id1 in [0, 2, 6, 8]
+    assert id2 in [1, 3, 5, 7]
+    if id1 >= 6:
+        id1 -= 2
+    id1 /= 2
+    id2 -= 1
+    id2 /= 2
+    id = (stone0.x * width + stone0.y) * 4 * 4 + id1 * 4 + id2
+    return id
+
+
+def from_id(id: int, width: int) -> Move:
+    assert 0 <= id < width * width * 4 * 4
+    id2 = id % 4
+    id //= 4
+    id1 = id % 4
+    id //= 4
+    y = id % width
+    id //= width
+    x = id
+
+    if id1 >= 2:
+        id1 += 1
+    id1 *= 2
+    dir1 = Dir.from_idx(id1)
+    dir2 = Dir.from_idx(id2)
+    stone0 = Coord(x, y)
+    stone1 = Coord(stone0.x + dir1.x, stone0.y + dir1.y)
+    stone2 = Coord(stone1.x + dir2.x, stone1.y + dir2.y)
+    return Move((stone0, stone1, stone2))
 
 
 class Color(Enum):
@@ -172,6 +214,49 @@ class Dir(NamedTuple):
     x: int
     y: int
 
+    def idx(self) -> int:
+        match (self.x, self.y):
+            case (-1, -1):
+                return 0
+            case (-1, 0):
+                return 1
+            case (-1, 1):
+                return 2
+            case (0, -1):
+                return 3
+            # case (0, 0):
+            #    return 4
+            case (0, 1):
+                return 5
+            case (1, -1):
+                return 6
+            case (1, 0):
+                return 7
+            case (1, 1):
+                return 8
+
+    @staticmethod
+    def from_idx(idx: int) -> Self:
+        match idx:
+            case 0:
+                return (-1, -1)
+            case 1:
+                return (-1, 0)
+            case 2:
+                return (-1, 1)
+            case 3:
+                return (0, -1)
+            case 5:
+                return (0, 1)
+            case 6:
+                return (1, -1)
+            case 7:
+                return (1, 0)
+            case 8:
+                return (1, 1)
+            case _:
+                raise ValueError(f"Invalid index: {idx}")
+
 
 @dataclass
 class Grid:
@@ -322,6 +407,17 @@ class Board:
             graph.apply_move(move)
         return graph.score()
 
+    def winner(self) -> Optional[Color]:
+        red_score = self.score(Color.Red)
+        blue_score = self.score(Color.Blue)
+        return (
+            Color.Red
+            if red_score > blue_score
+            else Color.Blue
+            if red_score < blue_score
+            else None
+        )
+
     def playout(self, init_turn: Color, rng: np.random.Generator) -> Optional[Color]:
         next_turn = opponent_of(init_turn)
         while not self.is_gameover():
@@ -338,3 +434,22 @@ class Board:
             if blue_score > red_score
             else None
         )
+
+    # return a tensor with shape(2, width * 3, width * 3)
+    def encode(self, color: Color) -> torch.Tensor:
+        tensor = torch.zeros([2, self.width, self.width, 3, 3])
+        for i in range(self.width):
+            for j in range(self.width):
+                idx = i * self.width + j
+                if self.grids[idx].color is None:
+                    continue
+                icolor = self.grids[idx].color.value
+                tensor[icolor][i][j][1][1] = 1
+                for dir in self.grids[idx].roots:
+                    tensor[icolor][i][j][dir.x + 1][dir.y + 1] = 1
+        reshaped = tensor.permute(0, 1, 3, 2, 4).reshape(
+            2, self.width * 3, self.width * 3
+        )
+        if color == Color.Blue:
+            reshaped[0], reshaped[1] = reshaped[1], reshaped[0]
+        return reshaped

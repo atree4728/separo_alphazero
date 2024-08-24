@@ -203,5 +203,16 @@ class PUCTMCPlayer:
         return self.root.last_move
 
 
+@dataclass
 class AlphaZeroPlayer:
-    pass
+    def __init__(
+        self,
+        color: separo.Color,
+        time_limit: float,
+        rng: np.random.Generator,
+        width: int,
+    ):
+        pass
+
+    def next_move(self, board: separo.Board) -> Optional[separo.Move]:
+        pass
