@@ -103,6 +103,7 @@ class Config:
         self.checkpoint_interval = int(1e3)
         self.buffer_size = int(1e6)
         self.batch_size = 4096
+        self.c_l2_reg = 1e-4
 
         # Schedule for chess and shogi, Go starts at 2e-2 immediately.
         self.learning_rate_schedule = {0: 2e-2, 100e3: 2e-2, 300e3: 2e-3, 500e3: 2e-4}
@@ -227,27 +228,19 @@ class Sample:
 
 @dataclass
 class ReplayBuffer:
-    rng: np.random
     buffer_size: int
     buffer: collections.deque[Sample] = field(default_factory=collections.deque)
 
     def __post_init__(self):
         self.buffer = collections.deque(maxlen=self.buffer_size)
 
-    def sample_batch(self):
-        indices = self.rng.choice(len(self.buffer), size=self.buffer_size)
+    def sample_batch(self, rng: np.random.Generator):
+        indices = rng.choice(len(self.buffer), size=self.buffer_size)
         samples = torch.Tensor([self.buffer[idx] for idx in indices])
         return tuple(samples.transpose())
 
-    def save(
-        self,
-        board: separo.Board,
-        color: separo.Color,
-        policy: torch.Tensor,
-        reward: int,
-    ):
-        state = board.encode(color)
-        self.buffer.append(Sample(state, policy, reward))
+    def save(self, sample: Sample):
+        self.buffer.append(sample)
 
 
 def selfplay(nnet: NNet, config: Config):
@@ -283,4 +276,22 @@ def selfplay(nnet: NNet, config: Config):
 
 
 def train(config: Config):
-    pass
+    nnet = NNet(config.width)
+    optimizer = optim.adam.Adam(nnet.parameters)
+    replay = ReplayBuffer(config.buffer_size)
+
+    for _ in range(config.training_steps / config.checkpoint_interval):
+        for _ in range(config.checkpoint_interval):
+            samples = selfplay(nnet, config)
+            for sample in samples:
+                replay.save(sample)
+        for _ in range(len(replay) // config.batch_size):
+            states, mcts_policy, rewards = replay.sample_batch(config.rng)
+            p_pred, v_pred = nnet(states)
+
+            value_loss = nn.functional.mse_loss(v_pred, rewards)
+            policy_loss = nn.functional.cross_entropy(p_pred, mcts_policy)
+            l2_reg = sum(param.pow(2.0).sum() for param in nnet.parameters())
+            loss = policy_loss + value_loss + config.c_l2_reg * l2_reg
+            loss.backward()
+            optimizer.step()

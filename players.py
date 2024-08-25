@@ -9,13 +9,14 @@ import numpy as np
 @dataclass
 class RandomPlayer:
     color: separo.Color
-    rng: np.random.Generator
 
-    def next_move(self, board: separo.Board) -> Optional[separo.Move]:
+    def next_move(
+        self, board: separo.Board, rng: np.random.Generator
+    ) -> Optional[separo.Move]:
         possible_moves = board.possible_moves(self.color)
         if len(possible_moves) == 0:
             return None
-        return self.rng.choice(possible_moves)
+        return rng.choice(possible_moves)
 
 
 @dataclass
@@ -52,9 +53,10 @@ class MCNode:
 class NaiveMCPlayer:
     color: separo.Color
     time_limit: float
-    rng: np.random.Generator
 
-    def next_move(self, board: separo.Board) -> Optional[separo.Move]:
+    def next_move(
+        self, board: separo.Board, rng: np.random.Generator
+    ) -> Optional[separo.Move]:
         candidates: list[MCNode] = []
         for move in board.possible_moves(self.color):
             cand_board = copy.deepcopy(board)
@@ -67,7 +69,7 @@ class NaiveMCPlayer:
         while time.time() < stop:
             for candidate in candidates:
                 tmp = copy.deepcopy(candidate.next_board)
-                if tmp.playout(self.color, self.rng) == self.color:
+                if tmp.playout(self.color, rng) == self.color:
                     candidate.wins += 1
             samples += 1
         opt_cand = max(candidates, key=lambda candidate: candidate.wins)
@@ -118,7 +120,6 @@ class UCTNode:
 class PUCTMCPlayer:
     color: separo.Color
     time_limit: float
-    rng: np.random.Generator
     ucb1_coeff: float
     expand_threshold: int
     root: UCTNode
@@ -127,14 +128,12 @@ class PUCTMCPlayer:
         self,
         color: separo.Color,
         time_limit: float,
-        rng: np.random.Generator,
         ucb1_coeff: float,
         expand_threshold: int,
         width: int,
     ) -> None:
         self.color = color
         self.time_limit = time_limit
-        self.rng = rng
         self.ucb1_coeff = ucb1_coeff
         self.expand_threshold = expand_threshold
 
@@ -148,11 +147,13 @@ class PUCTMCPlayer:
                 self.root = UCTNode(separo.Color.Red, separo.Board(width), None)
                 self.root.expand_node()
 
-    def next_move(self, board: separo.Board) -> Optional[separo.Move]:
+    def next_move(
+        self, board: separo.Board, rng: np.random.Generator
+    ) -> Optional[separo.Move]:
         if not board.can_move(self.color):
             return None
         self.root = list(
-            filter(lambda child: child.board == board, self.root.children)
+            filter(lambda child: child.board.grids == board.grids, self.root.children)
         )[0]
         stop = time.time() + self.time_limit
         while time.time() < stop:
@@ -165,7 +166,7 @@ class PUCTMCPlayer:
                 )
                 history.append(node)
 
-            wins = copy.deepcopy(node.board).playout(node.color, self.rng)
+            wins = copy.deepcopy(node.board).playout(node.color, rng)
             for ancestor in history:
                 ancestor.samples += 1
                 if wins == ancestor.color:
@@ -205,14 +206,4 @@ class PUCTMCPlayer:
 
 @dataclass
 class AlphaZeroPlayer:
-    def __init__(
-        self,
-        color: separo.Color,
-        time_limit: float,
-        rng: np.random.Generator,
-        width: int,
-    ):
-        pass
-
-    def next_move(self, board: separo.Board) -> Optional[separo.Move]:
-        pass
+    pass

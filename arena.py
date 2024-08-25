@@ -1,7 +1,9 @@
 from dataclasses import dataclass
 import separo
+import players
 from typing import Optional
 import ray
+import numpy as np
 from ray.experimental import tqdm_ray
 
 remote_tqdm = ray.remote(tqdm_ray.tqdm)
@@ -10,6 +12,8 @@ remote_tqdm = ray.remote(tqdm_ray.tqdm)
 @ray.remote
 def play(
     # bar: tqdm_ray.tqdm,
+    rng1: np.random.Generator,
+    rng2: np.random.Generator,
     width: int,
     red,
     blue,
@@ -18,13 +22,13 @@ def play(
     board = separo.Board(width)
 
     while not board.is_gameover():
-        red_action = red.next_move(board)
+        red_action = red.next_move(board, rng1)
         if red_action is not None:
             board.apply_move(red_action, separo.Color.Red)
         if verbose:
             print(f"Red: {red_action}")
             board.dump()
-        blue_action = blue.next_move(board)
+        blue_action = blue.next_move(board, rng2)
         if blue_action is not None:
             board.apply_move(blue_action, separo.Color.Blue)
         if verbose:
@@ -65,13 +69,15 @@ class Arena:
         # bar = remote_tqdm.remote(total=n_matches)
         winners = [
             play.remote(
+                np.random.default_rng(seed),
+                np.random.default_rng(seed + 1),
                 # bar,
                 self.width,
                 self.red,
                 self.blue,
                 verbose=verbose,
             )
-            for _ in range(n_matches)
+            for seed in range(n_matches)
         ]
         for winner in ray.get(winners):
             if winner == separo.Color.Red:
